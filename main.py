@@ -1,6 +1,13 @@
-def main():
-    print("Hello from tailortalk!")
+from fastapi import FastAPI
+from pydantic import BaseModel
+from ai_integration import compiled_graph
 
+app = FastAPI()
 
-if __name__ == "__main__":
-    main()
+class ChatRequest(BaseModel):
+    message: str
+
+@app.post("/chat")
+def chat(req: ChatRequest):
+    result = compiled_graph.invoke({"input": req.message})
+    return {"reply": result["output"]}
