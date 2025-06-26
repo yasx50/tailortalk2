@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from pydantic import BaseModel
-from ai_integration import compiled_graph
+from ai_agent.ai_integration import compiled_graph
 
 app = FastAPI()
 
