@@ -6,8 +6,11 @@ st.set_page_config(layout="wide")
 st.title("📅 Google Calendar View")
 
 # Fetch events from your FastAPI backend
-res = requests.get("https://schedulerbot.streamlit.app/events")
-data = res.json()
+response = requests.get("https://tailortalk2.onrender.com/events")
+data = response.json()
+print("Response status:", response.status_code)
+print("Response text:", response.text)
+
 
 if "error" in data:
     st.error(data["error"])
