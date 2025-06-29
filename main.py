@@ -6,6 +6,7 @@ from ai_agent.fetch_calendar import get_all_calendars
 from ai_agent.events import get_all_events
 import uvicorn
 import os
+from ai_agent.calendar_setup import generate_token_from_credentials
 
 
 
@@ -35,5 +36,6 @@ def fetch_calendar():
 
 
 if __name__ == "__main__":
+    generate_token_from_credentials()
     port = int(os.environ.get("PORT", 8000))  # Use PORT env variable or fallback to 8000
     uvicorn.run("main:app", host="0.0.0.0", port=port, reload=True)

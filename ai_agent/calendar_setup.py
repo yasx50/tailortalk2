@@ -1,9 +1,8 @@
 import os
-import pickle
+import json
 import datetime
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
-from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 import pytz
@@ -14,59 +13,58 @@ SCOPES = ['https://www.googleapis.com/auth/calendar']
 def authenticate_google_calendar():
     """
     Authenticate and return Google Calendar service object.
-    Handles token refresh and initial authentication.
+    Uses token.json for production authentication without UI flow.
     """
     creds = None
     
-    # Load existing token
-    if os.path.exists('token.pkl'):
+    # Load credentials from token.json
+    if os.path.exists('token.json'):
         try:
-            with open('token.pkl', 'rb') as token:
-                creds = pickle.load(token)
-                print("✅ Loaded existing credentials")
+            with open('token.json', 'r') as token_file:
+                token_data = json.load(token_file)
+                
+                # Check if it's the credentials.json format (with "installed" key)
+                if 'installed' in token_data:
+                    print("❌ token.json contains credentials.json format")
+                    print("📝 You need an actual access token, not client credentials")
+                    print("💡 Run generate_token_from_credentials() first to create proper token.json")
+                    return None
+                
+                # Load as authorized user credentials
+                creds = Credentials.from_authorized_user_info(token_data, SCOPES)
+                print("✅ Loaded credentials from token.json")
         except Exception as e:
-            print(f"⚠️ Error loading token.pkl: {e}")
-            creds = None
+            print(f"❌ Error loading token.json: {e}")
+            return None
+    else:
+        print("❌ token.json file not found!")
+        print("📝 Please ensure token.json contains valid OAuth2 credentials")
+        return None
     
-    # Check if credentials are valid
+    # Check if credentials are valid and refresh if needed
     if not creds or not creds.valid:
         if creds and creds.expired and creds.refresh_token:
             try:
                 print("🔄 Refreshing expired credentials...")
                 creds.refresh(Request())
                 print("✅ Credentials refreshed successfully")
+                
+                # Save refreshed credentials back to token.json
+                try:
+                    with open('token.json', 'w') as token_file:
+                        json.dump(creds.to_json(), token_file, indent=2)
+                        print("✅ Updated token.json with refreshed credentials")
+                except Exception as e:
+                    print(f"⚠️ Could not update token.json: {e}")
+                    
             except Exception as e:
                 print(f"❌ Error refreshing credentials: {e}")
-                creds = None
-        
-        # If still no valid credentials, run OAuth flow
-        if not creds:
-            if not os.path.exists('credentials.json'):
-                print("❌ credentials.json file not found!")
-                print("📝 Please download it from Google Cloud Console:")
-                print("   1. Go to https://console.cloud.google.com/")
-                print("   2. Enable Google Calendar API")
-                print("   3. Create OAuth 2.0 credentials")
-                print("   4. Download and save as 'credentials.json'")
+                print("📝 Please regenerate token.json with valid credentials")
                 return None
-            
-            try:
-                print("🔐 Starting OAuth flow...")
-                flow = InstalledAppFlow.from_client_secrets_file(
-                    'credentials.json', SCOPES)
-                creds = flow.run_local_server(port=0)
-                print("✅ Authentication successful")
-            except Exception as e:
-                print(f"❌ OAuth flow failed: {e}")
-                return None
-        
-        # Save credentials for next run
-        try:
-            with open('token.pkl', 'wb') as token:
-                pickle.dump(creds, token)
-                print("✅ Credentials saved to token.pkl")
-        except Exception as e:
-            print(f"⚠️ Could not save credentials: {e}")
+        else:
+            print("❌ Invalid credentials and no refresh token available")
+            print("📝 Please regenerate token.json with valid credentials")
+            return None
     
     try:
         service = build('calendar', 'v3', credentials=creds)
@@ -299,12 +297,21 @@ def run_diagnostics():
     
     # Check files
     print("1️⃣ Checking required files:")
-    files_to_check = ['credentials.json', 'token.pkl']
-    for file in files_to_check:
-        if os.path.exists(file):
-            print(f"   ✅ {file} found")
-        else:
-            print(f"   ❌ {file} missing")
+    if os.path.exists('token.json'):
+        print(f"   ✅ token.json found")
+        try:
+            with open('token.json', 'r') as f:
+                token_data = json.load(f)
+                required_fields = ['client_id', 'client_secret', 'refresh_token', 'type']
+                missing_fields = [field for field in required_fields if field not in token_data]
+                if missing_fields:
+                    print(f"   ⚠️ token.json missing fields: {missing_fields}")
+                else:
+                    print(f"   ✅ token.json has all required fields")
+        except Exception as e:
+            print(f"   ❌ Error reading token.json: {e}")
+    else:
+        print(f"   ❌ token.json missing")
     print()
     
     # Test connection
@@ -332,10 +339,101 @@ def run_diagnostics():
         print("   ❌ Calendar connection failed\n")
         return False
 
+def generate_token_from_credentials():
+    """
+    One-time function to generate token.json from credentials.json format.
+    Use this to convert your client credentials to an access token.
+    """
+    from google_auth_oauthlib.flow import InstalledAppFlow
+    
+    if not os.path.exists('token.json'):
+        print("❌ token.json not found")
+        return False
+    
+    try:
+        with open('token.json', 'r') as f:
+            data = json.load(f)
+        
+        # Check if it's credentials.json format
+        if 'installed' not in data:
+            print("✅ token.json already has the correct format")
+            return True
+        
+        print("🔄 Converting credentials to access token...")
+        print("📝 This will open a browser window for one-time authentication")
+        
+        # Extract client credentials
+        client_config = data['installed']
+        
+        # Run OAuth flow
+        flow = InstalledAppFlow.from_client_config(
+            {'installed': client_config}, 
+            SCOPES
+        )
+        
+        creds = flow.run_local_server(port=0)
+        
+        # Create the proper token format
+        token_data = {
+            "client_id": creds.client_id,
+            "client_secret": creds.client_secret,
+            "refresh_token": creds.refresh_token,
+            "token": creds.token,
+            "type": "authorized_user"
+        }
+        
+        # Backup original and save new format
+        os.rename('token.json', 'token_backup.json')
+        print("📁 Backed up original token.json to token_backup.json")
+        
+        with open('token.json', 'w') as f:
+            json.dump(token_data, f, indent=2)
+        
+        print("✅ Successfully converted to access token format")
+        print("🔒 Your token.json now contains the access token for production use")
+        return True
+        
+    except Exception as e:
+        print(f"❌ Error converting credentials: {e}")
+        return False
+
+def create_token_json_template():
+    """Create a template token.json file with required structure."""
+    template = {
+        "client_id": "your-client-id.googleusercontent.com",
+        "client_secret": "your-client-secret",
+        "refresh_token": "your-refresh-token",
+        "token": "your-access-token",
+        "type": "authorized_user"
+    }
+    
+    try:
+        with open('token_template.json', 'w') as f:
+            json.dump(template, f, indent=2)
+        print("✅ Created token_template.json")
+        print("📝 Fill in your actual credentials and rename to token.json")
+    except Exception as e:
+        print(f"❌ Error creating template: {e}")
+
 # Example usage
 if __name__ == "__main__":
+    # Check if we need to convert credentials format
+    if os.path.exists('token.json'):
+        with open('token.json', 'r') as f:
+            data = json.load(f)
+            if 'installed' in data:
+                print("🔄 Detected credentials.json format in token.json")
+                print("📝 Run generate_token_from_credentials() to convert it first")
+                print("💡 This is a one-time setup step")
+                
+                # Uncomment the line below to automatically convert
+                # generate_token_from_credentials()
+                exit()
+    
     # Run diagnostics
-    run_diagnostics()
+    if not run_diagnostics():
+        print("\n📝 If token.json is missing, you can create a template:")
+        create_token_json_template()
     
     # Example: Find free slots for today
     today = datetime.date.today()
