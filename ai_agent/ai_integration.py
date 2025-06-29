@@ -6,7 +6,7 @@ from langchain_groq import ChatGroq
 from langchain_core.messages import HumanMessage, SystemMessage
 import dateparser
 from datetime import datetime, timedelta
-from ai_agent.calendar_setup import get_free_slots, book_slot
+from ai_agent.calendar_setup import find_free_slots, book_meeting
 from typing import TypedDict
 from ai_agent.intent_detect import detect_intent
 load_dotenv()
@@ -43,7 +43,7 @@ def process_message(state):
 
     # 👉 Book meeting if intent is booking
     if intent == "book" and dt:
-        existing_events = get_free_slots(dt.date())
+        existing_events = find_free_slots(dt.date())
         if existing_events:
             return {
                 "input": message,
@@ -52,7 +52,7 @@ def process_message(state):
 
         end_dt = dt + timedelta(minutes=30)
         person = extract_person_name(message)
-        event = book_slot(dt, end_dt, summary=f"Meeting with {person}")
+        event = book_meeting(dt, end_dt, summary=f"Meeting with {person}")
         return {
             "input": message,
             "output": f"✅ Booked '{event['summary']}' on {dt.strftime('%A, %d %B %Y at %I:%M %p')}"
@@ -61,13 +61,14 @@ def process_message(state):
     # 👉 Fetch today’s meetings
     elif intent == "fetch":
         today = datetime.now().date()
-        events = get_free_slots(today)
+        events = find_free_slots(today)
         if not events:
             return {"input": message, "output": "📭 No meetings found for today."}
         
         reply = "📅 Your meetings for today:\n"
         for event in events:
-            summary = event.get('summary', 'No Title')
+            summary = event[0] if isinstance(event, tuple) else event.get('summary', 'No Title')
+
             time = event['start'].get('dateTime', event['start'].get('date'))
             reply += f"• {summary} at {time}\n"
 

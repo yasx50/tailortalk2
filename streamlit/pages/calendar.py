@@ -6,7 +6,7 @@ st.set_page_config(layout="wide")
 st.title("📅 Google Calendar View")
 
 # Fetch events from your FastAPI backend
-res = requests.get("http://localhost:8000/events")
+res = requests.get("https://schedulerbot.streamlit.app/events")
 data = res.json()
 
 if "error" in data:
