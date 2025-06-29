@@ -10,7 +10,7 @@ user_input = st.text_input("You:", key="input")
 
 if user_input:
     st.session_state.chat_history.append(("user", user_input))
-    response = requests.post("https://schedulerbot.streamlit.app/chat", json={"message": user_input})
+    response = requests.post("https://tailortalk2.onrender.com/chat", json={"message": user_input})
     reply = response.json()["reply"]
     st.session_state.chat_history.append(("bot", reply))
 
